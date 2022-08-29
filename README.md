@@ -10,8 +10,8 @@ Developed as a requirement for the **laboratório de engenharia de software (sof
 
 ## Tools used
 
-- [Vagrant]
-- [Ansible]
+- [vagrant]
+- [ansible]
 
 ## Observations
 
