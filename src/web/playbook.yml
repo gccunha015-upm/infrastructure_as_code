@@ -1,0 +1,125 @@
+---
+- name: Configurar Web
+  hosts: web
+  # variaveis para utilizar em templates
+  vars:
+    db_host: "192.168.33.10"
+    db_schema: "loja_schema"
+    db_user: "loja"
+    db_password: "lojasecret"
+
+  tasks:
+    - name: instalar pacotes mysql-client e tomcat7
+      apt:
+        pkg:
+          - mysql-client
+          - tomcat7
+        state: present # se ja estiver instalado, nao tenta instalar novamente
+        update_cache: yes # atualiza repositorios de pacotes antes de tentar instalar
+        cache_valid_time: 3600 # atualiza repositorios somente se a ultima vez que foram atualizados faz mais de 3600 segundos
+      # se ocorrer erro ao utilizar aplicacao apt, tenta novamente no maximo 100 vezes
+      register: apt_action
+      retries: 100
+      until: apt_action is success or ('Failed to lock apt for exclusive operation' not in apt_action.msg and '/var/lib/dpkg/lock' not in apt_action.msg)
+
+    # copia arquivo da maquina host para a guest
+    - name: assegurar presenca do arquivo /var/lib/tomcat7/conf/.keystore
+      copy:
+        src: .keystore # arquivo fonte na maquina host
+        dest: /var/lib/tomcat7/conf/.keystore # destino na maquina guest
+        owner: root
+        group: tomcat7
+        mode: '0640'
+      # notifica o handler reiniciar tomcat7
+      notify:
+        - reiniciar tomcat7
+
+    # copia arquivo da maquina host para a guest
+    - name: assegurar presenca do arquivo /var/lib/tomcat7/conf/server.xml
+      copy:
+        src: server.xml # arquivo fonte na maquina host
+        dest: /var/lib/tomcat7/conf/server.xml # destino na maquina guest
+        owner: root
+        group: tomcat7
+        mode: '0644'
+      # notifica o handler reiniciar tomcat7
+      notify:
+        - reiniciar tomcat7
+
+    # copia arquivo da maquina host para a guest
+    - name: assegurar presenca do arquivo /etc/default/tomcat7
+      copy:
+        src: tomcat7 # arquivo fonte na maquina host
+        dest: /etc/default/tomcat7 # destino na maquina guest
+        owner: root
+        group: root
+        mode: '0644'
+      # notifica o handler reiniciar tomcat7
+      notify:
+        - reiniciar tomcat7
+
+    - name: assegurar que servico tomcat7 esteja rodando
+      service:
+        name: tomcat7
+        state: started # servico deve estar iniciado
+        enabled: yes # servico deve estar habilitado
+
+    # cria diretorio
+    - name: assegurar presenca do diretorio /tmp/cargo/installs
+      file:
+        path: /tmp/cargo/installs # caminho completo do diretorio
+        state: directory
+        mode: '0755'
+
+    # copia arquivo da maquina host para a guest
+    - name: assegurar presenca do arquivo /tmp/cargo/installs/jetty-distribution-8.1.14.v20131031.tar.gz
+      copy:
+        src: jetty-distribution-8.1.14.v20131031.tar.gz # arquivo fonte na maquina host
+        dest: /tmp/cargo/installs/jetty-distribution-8.1.14.v20131031.tar.gz # destino na maquina guest
+        owner: root
+        group: root
+        mode: '0644'
+
+    # cria diretorio
+    - name: assegurar presenca do diretorio /home/vagrant/.m2
+      file:
+        path: /home/vagrant/.m2 # caminho completo do diretorio
+        state: directory
+        mode: '0755'
+
+    # copia arquivo da maquina host para a guest
+    - name: assegurar presenca do arquivo /home/vagrant/.m2/settings.xml
+      copy:
+        src: settings.xml # arquivo fonte na maquina host
+        dest: /home/vagrant/.m2/settings.xml # destino na maquina guest
+        owner: root
+        group: root
+        mode: '0644'
+
+    # copia arquivo da maquina host para a guest alterando os nomes das variaveis pelos valores
+    - name: assegurar presenca do arquivo /var/lib/tomcat7/conf/context.xml
+      template:
+        src: context.xml # arquivo fonte na maquina host
+        dest: /var/lib/tomcat7/conf/context.xml # destino na maquina guest
+        owner: root
+        group: tomcat7
+        mode: '0644'
+      notify:
+        - reiniciar tomcat7
+
+    # copia arquivo da maquina host para a guest
+    - name: assegurar presenca do arquivo /var/lib/tomcat7/webapps/devopsnapratica.war
+      copy:
+        src: devopsnapratica.war # arquivo fonte na maquina host
+        dest: /var/lib/tomcat7/webapps/devopsnapratica.war # destino na maquina guest
+        owner: tomcat7
+        group: tomcat7
+        mode: '0644'
+      notify:
+        - reiniciar tomcat7
+
+  handlers:
+    - name: reiniciar tomcat7
+      service:
+        name: tomcat7
+        state: restarted # servico deve ser reiniciado

@@ -1,0 +1,63 @@
+---
+- name: Configurar Banco de Dados
+  hosts: db
+
+  tasks:
+    - name: instalar pacote mysql-server
+      apt:
+        name: mysql-server
+        state: present # se ja estiver instalado, nao tenta instalar novamente
+        update_cache: yes # atualiza repositorios de pacotes antes de tentar instalar
+        cache_valid_time: 3600 # atualiza repositorios somente se a ultima vez que foram atualizados faz mais de 3600 segundos
+      # se ocorrer erro ao utilizar aplicacao apt, tenta novamente no maximo 100 vezes
+      register: apt_action
+      retries: 100
+      until: apt_action is success or ('Failed to lock apt for exclusive operation' not in apt_action.msg and '/var/lib/dpkg/lock' not in apt_action.msg)
+
+    # copia arquivo da maquina host para a guest
+    - name: assegurar presenca do arquivo /etc/mysql/conf.d/allow_external.cnf
+      copy:
+        src: allow_ext.cnf # arquivo fonte na maquina host
+        dest: /etc/mysql/conf.d/allow_external.cnf # destino na maquina guest
+        owner: mysql
+        group: mysql
+        mode: '0644'
+      # notifica o handler reiniciar mysql
+      notify:
+        - reiniciar mysql
+
+    - name: assegurar que servico mysql esteja rodando
+      service:
+        name: mysql
+        state: started # servico deve estar iniciado
+        enabled: yes # servico deve estar habilitado
+
+    # roda os comandos no terminal da vm
+    - name: criar loja_schema
+      shell: mysql -uroot loja_schema || mysqladmin -uroot create loja_schema
+    
+    # roda os comandos no terminal da vm
+    - name: remover usuario anonimo
+      shell:
+        cmd: >
+          mysql -u' ' ||
+          mysql -uroot -e
+          "DELETE FROM mysql.user
+          WHERE user='';
+          FLUSH PRIVILEGES"
+
+    # roda os comandos no terminal da vm
+    - name: criar loja_user
+      shell:
+        cmd: >
+          mysql -uloja -plojasecret loja_schema ||
+          mysql -uroot -e
+          "GRANT ALL PRIVILEGES ON
+          loja_schema.* TO 'loja'@'%'
+          IDENTIFIED BY 'lojasecret';"
+
+  handlers:
+    - name: reiniciar mysql
+      service:
+        name: mysql
+        state: restarted # servico deve ser reiniciado

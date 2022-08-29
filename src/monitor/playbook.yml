@@ -1,0 +1,68 @@
+---
+- name: Configurar Monitoramento
+  hosts: monitor
+
+  tasks:
+    # roda os comandos no terminal da vm
+    - name: configurar sistema para adquirir ultima versao do nagios
+      shell:
+        cmd: >
+          echo "Package: nagios*
+          Pin: release n=raring
+          Pin-Priority: 990" | sudo tee /etc/apt/preferences.d/nagios
+          &&
+          echo "deb http://old-releases.ubuntu.com/ubuntu raring main" |
+          sudo tee /etc/apt/sources.list.d/raring.list
+    
+    - name: instalar pacotes nagios3 e expect-dev
+      apt:
+        pkg: 
+          - nagios3
+          - expect-dev
+        state: present # se ja estiver instalado, nao tenta instalar novamente
+        update_cache: yes # atualiza repositorios de pacotes antes de tentar instalar
+        cache_valid_time: 3600 # atualiza repositorios somente se a ultima vez que foram atualizados faz mais de 3600 segundos
+      # se ocorrer erro ao utilizar aplicacao apt, tenta novamente no maximo 100 vezes
+      register: apt_action
+      retries: 100
+      until: apt_action is success or ('Failed to lock apt for exclusive operation' not in apt_action.msg and '/var/lib/dpkg/lock' not in apt_action.msg)
+
+    # roda os comandos no terminal da vm
+    - name: configurar postfix
+      shell:
+        cmd: >
+          echo "set postfix/mailname monitor.lojavirtualdevops.com.br" |
+          debconf-communicate
+          &&
+          echo "set postfix/main_mailer_type Internet Site" |
+          debconf-communicate
+
+    # copia arquivo da maquina host para a guest
+    - name: assegurar presenca do arquivo nagios.exp
+      copy:
+        src: nagios.exp # arquivo fonte na maquina host
+        dest: /etc/nagios3/nagios.exp # destino na maquina guest
+        owner: root
+        group: root
+        mode: '0770' # permissao de leitura, escrita e execucao para dono e grupo
+
+    - name: configurar senha do nagiosadmin
+      shell: /etc/nagios3/nagios.exp # executar script gerado manualmente uma vez utilizando autoexpect do pacote expect-dev
+
+    # copia arquivo da maquina host para a guest
+    - name: assegurar presenca do arquivo /etc/nagios3/conf.d/loja_virtual.cfg
+      copy:
+        src: loja_virtual.cfg # arquivo fonte na maquina host
+        dest: /etc/nagios3/conf.d/loja_virtual.cfg # destino na maquina guest
+        owner: root
+        group: root
+        mode: '0644'
+      # notifica o handler reiniciar nagios3
+      notify:
+        - reiniciar nagios3
+
+  handlers:
+    - name: reiniciar nagios3
+      service:
+        name: nagios3
+        state: restarted # servico deve ser reiniciado
